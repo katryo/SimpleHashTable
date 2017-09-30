@@ -40,19 +40,16 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 
 public class DB {
-    private static final int BYTE_ARRAY_SIZE = 4096;
-    private byte[][] dataArray;
-    private int[] isOccupiedArray; // I can use primitive data type only
-    private int dataLength;
+    private int maxSize;
     private int occupiedKeyCount;
+    private Node[] entryChains;
 
     /*
       constructor(size): return an instance of the class with pre-allocated space for the given number of objects.
      */
     public DB(int size) {
-        dataLength = size;
-        dataArray = new byte[size][BYTE_ARRAY_SIZE];
-        isOccupiedArray = new int[size];
+        maxSize = size;
+        entryChains = new Node[size];
         occupiedKeyCount = 0;
     }
 
@@ -61,6 +58,7 @@ public class DB {
       Returns a boolean value indicating success / failure of the operation.
      */
     public boolean set(String key, Object value) {
+        if (occupiedKeyCount == maxSize) return false;
         int ind = keyToIndex(key);
         try (ByteArrayOutputStream b = new ByteArrayOutputStream()) {
             try (ObjectOutputStream o = new ObjectOutputStream(b)) {
@@ -72,12 +70,15 @@ public class DB {
             }
             byte[] data = b.toByteArray();
 
-            if (isOccupiedArray[ind] == 0) {
-                isOccupiedArray[ind] = 1;
+            if (entryChains[ind] == null) {
+                entryChains[ind] = new Node(key, data);
                 occupiedKeyCount++;
+            } else {
+                if (entryChains[ind].get(key) == null) {
+                    occupiedKeyCount++;
+                };
+                entryChains[ind].addNext(new Node(key, data));
             }
-
-            dataArray[ind] = data;
         } catch (IOException e) {
             e.printStackTrace();
             return false;
@@ -90,8 +91,8 @@ public class DB {
      */
     public Object get(String key) {
         int ind = keyToIndex(key);
-        if (isOccupiedArray[ind] == 0) return null;
-        byte[] data = dataArray[ind];
+        byte[] data = entryChains[ind].get(key);
+        if (data == null) return null;
         try {
             return deserialize(data);
         } catch (IOException e) {
@@ -108,12 +109,11 @@ public class DB {
      */
     public Object delete(String key) {
         int ind = keyToIndex(key);
-        if (isOccupiedArray[ind] == 0) return null;
-        byte[] data = dataArray[ind];
+        byte[] data = entryChains[ind].get(key);
+        if (data == null) return null;
         try {
             Object target = deserialize(data);
-            isOccupiedArray[ind] = 0;
-            dataArray[ind] = new byte[BYTE_ARRAY_SIZE];
+            entryChains[ind].delete(key);
             occupiedKeyCount--;
             return target;
         } catch (IOException e) {
@@ -130,7 +130,7 @@ public class DB {
       Since the size of the dat structure is fixed, this should never be greater than 1.
      */
     public double load() {
-        return (double) occupiedKeyCount / (double) dataLength;
+        return (double) occupiedKeyCount / (double) maxSize;
     }
 
     private Object deserialize(byte[] data) throws IOException, ClassNotFoundException {
@@ -141,20 +141,12 @@ public class DB {
         }
     }
 
+    /*
+    Index might conflict.
+     */
     private int keyToIndex(String key) {
         int hashedKey = key.hashCode();
-        int ind = Math.abs(hashedKey % dataLength);
-
-        //TODO: Implement separate chaining
-        // If you can't go out of while, there are full items.
-        assert dataLength != occupiedKeyCount;
-        while (isOccupiedArray[ind] == 1) {
-            ind++;
-            if (ind == dataLength) {
-                ind = 0;
-            }
-        }
-        return ind;
+        return Math.abs(hashedKey % maxSize);
     }
 
     private byte[] getBytes(String key) {
@@ -163,15 +155,54 @@ public class DB {
 
     public static void main(String[] args) {
 
-        DB db = new DB(10);
+        DB db = new DB(2);
         db.set("a", "abcd");
         db.set("bibibi", 128);
-        db.set("citadel", 'D');
-        System.out.println(db.get("bibibi"));
-        System.out.println(db.load());
 
-        db.delete("bibibi");
-        System.out.println(db.get("bibibi"));
-        System.out.println(db.load());
+        System.out.println(db.get("a"));
+    }
+
+    private class Node {
+        private Node next;
+        private Node previous;
+        private byte[] value;
+        private String key;
+        private Node(String key, byte[] data) {
+            this.key = key;
+            value = data;
+            next = null;
+            previous = null;
+        }
+
+        private void addNext(Node next) {
+            this.next = next;
+            next.previous = this;
+        }
+
+        private byte[] get(String key) {
+            if (this.key.equals(key)) return value;
+            if (next != null) {
+                return next.get(key);
+            }
+            return null; // If there is no node that has the key with the same given key
+        }
+
+        private void delete(String key) {
+            if (this.key.equals(key)) {
+                if (previous != null) {
+                    previous.next = next;
+                }
+                if (next != null) {
+                    next.previous = previous;
+                }
+                value = null;
+                return;
+            }
+            if (next != null) {
+                next.delete(key);
+                return;
+            }
+            throw new RuntimeException("There is no such key");
+        }
     }
 }
