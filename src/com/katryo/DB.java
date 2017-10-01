@@ -1,38 +1,5 @@
 package com.katryo;
 
-
-/*
-
-http://kpcbfellows.com/engineering/apply
-
-deadline is 9/30
-
-Answer the challenge question (optional)
-
-Make your application stand out.
-
-Problem
-Using only primitive types, implement a fixed-size hash map that associates string keys with arbitrary data object references
- (you don't need to copy the object).
- Your data structure should be optimized for algorithmic runtime and memory usage.
- You should not import any external libraries, and may not use primitive hash map or dictionary types in languages like Python or Ruby.
-
-The solution should be delivered in one class (or your language's equivalent) that provides the following functions:
-
-constructor(size): return an instance of the class with pre-allocated space for the given number of objects.
-boolean set(key, value): stores the given key/value pair in the hash map. Returns a boolean value indicating success / failure of the operation.
-get(key): return the value associated with the given key, or null if no value is set.
-delete(key): delete the value associated with the given key, returning the value on success or null if the key has no value.
-float load(): return a float value representing the load factor (`(items in hash map)/(size of hash map)`) of the data structure.
-Since the size of the dat structure is fixed, this should never be greater than 1.
-If your language provides a built-in hashing function for strings (ex. `hashCode` in Java or `__hash__` in Python) you are welcome to use that.
-If not, you are welcome to do something naive, or use something you find online with proper attribution.
-
-Instructions
-Please provide the source, tests, runnable command-line function and all the resources required to compile (if necessary) and run the following program.
-You are free to use any coding language that compiles/runs on *nix operating systems and requires no licensed software.
- */
-
 import java.io.ByteArrayOutputStream;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -48,6 +15,9 @@ public class DB {
       constructor(size): return an instance of the class with pre-allocated space for the given number of objects.
      */
     public DB(int size) {
+        if (size < 1) {
+            throw new IllegalArgumentException("Size must be bigger than 0");
+        }
         maxSize = size;
         entryChains = new Node[size];
         occupiedKeyCount = 0;
@@ -91,14 +61,12 @@ public class DB {
      */
     public Object get(String key) {
         int ind = keyToIndex(key);
+        if (entryChains[ind] == null) return null;
         byte[] data = entryChains[ind].get(key);
         if (data == null) return null;
         try {
             return deserialize(data);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }
@@ -109,6 +77,7 @@ public class DB {
      */
     public Object delete(String key) {
         int ind = keyToIndex(key);
+        if (entryChains[ind] == null) return null;
         byte[] data = entryChains[ind].get(key);
         if (data == null) return null;
         try {
@@ -116,10 +85,7 @@ public class DB {
             entryChains[ind].delete(key);
             occupiedKeyCount--;
             return target;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }
@@ -131,6 +97,15 @@ public class DB {
      */
     public double load() {
         return (double) occupiedKeyCount / (double) maxSize;
+    }
+
+    public static void main(String[] args) {
+        DB db = new DB(10);
+        String object = "This is a object";
+        db.set("myObject", object);
+
+        String obtainedObject = (String) db.get("myObject");
+        System.out.println(obtainedObject);
     }
 
     private Object deserialize(byte[] data) throws IOException, ClassNotFoundException {
@@ -147,19 +122,6 @@ public class DB {
     private int keyToIndex(String key) {
         int hashedKey = key.hashCode();
         return Math.abs(hashedKey % maxSize);
-    }
-
-    private byte[] getBytes(String key) {
-        return new byte[1];
-    }
-
-    public static void main(String[] args) {
-
-        DB db = new DB(2);
-        db.set("a", "abcd");
-        db.set("bibibi", 128);
-
-        System.out.println(db.get("a"));
     }
 
     private class Node {
